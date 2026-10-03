@@ -1,0 +1,29 @@
+﻿# Local-only folders
+Compressed/
+Deprecated/
+ExtensionPresentation/
+presentation/
+docs/
+
+# Zip files
+*.zip
+
+# Local dev / diagnostic tools
+probe.py
+logs/
+node_modules/
+playwright-report/
+test-results/
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+__pycache__/
+# Compiled test files
+tests/**/*.spec.js
+tests/**/*.spec.js.map
+!tests/**/*.spec.ts
+
+node_modules/
+.mcp_tokens.json

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Light VS Guts - Box Arena Battle Simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Montserrat:wght@400;600;700;900&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar / Control Panel -->
+    <aside class="control-panel">
+      <div class="panel-header">
+        <div class="logo-badge">⚔️ VS ARENA</div>
+        <h1 class="game-title">LIGHT <span class="vs-glow">VS</span> GUTS</h1>
+        <p class="subtitle">Physics Arena Battle Simulator & Playable Game</p>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="card mode-card">
+        <label class="card-title">SELECT GAME MODE</label>
+        <div class="mode-buttons">
+          <button class="btn mode-btn active" data-mode="cinematic">
+            <span class="icon">🎬</span>
+            <div class="btn-text">
+              <strong>Cinematic Re-enactment</strong>
+              <small>Viral TikTok battle scenario</small>
+            </div>
+          </button>
+          <button class="btn mode-btn" data-mode="simulation">
+            <span class="icon">🤖</span>
+            <div class="btn-text">
+              <strong>Physics AI Simulation</strong>
+              <small>Dynamic physics-based duel</small>
+            </div>
+          </button>
+          <button class="btn mode-btn" data-mode="play-guts">
+            <span class="icon">🗡️</span>
+            <div class="btn-text">
+              <strong>Play as Guts</strong>
+              <small>Slay Light before timer hits 0</small>
+            </div>
+          </button>
+          <button class="btn mode-btn" data-mode="play-light">
+            <span class="icon">📓</span>
+            <div class="btn-text">
+              <strong>Play as Light</strong>
+              <small>Survive 15s to write Guts' name</small>
+            </div>
+          </button>
+          <button class="btn mode-btn" data-mode="sandbox">
+            <span class="icon">⚙️</span>
+            <div class="btn-text">
+              <strong>Sandbox Custom Match</strong>
+              <small>Tweak HP, timer, sword size & speed</small>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Action Controls -->
+      <div class="card action-card">
+        <div class="action-btn-row">
+          <button id="btn-play-pause" class="btn btn-primary">
+            <span class="btn-icon">▶</span> <span id="play-text">START BATTLE</span>
+          </button>
+          <button id="btn-restart" class="btn btn-secondary" title="Restart match">
+            <span class="btn-icon">🔄</span> RESTART
+          </button>
+        </div>
+
+        <div class="speed-row">
+          <span class="speed-label">Simulation Speed:</span>
+          <div class="speed-buttons">
+            <button class="btn-chip" data-speed="0.5">0.5x</button>
+            <button class="btn-chip active" data-speed="1">1x</button>
+            <button class="btn-chip" data-speed="2">2x</button>
+            <button class="btn-chip" data-speed="4">4x</button>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="chk-auto-restart" checked>
+            <span class="slider"></span>
+            <span class="toggle-text">Auto-Restart Matches</span>
+          </label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="chk-hitboxes">
+            <span class="slider"></span>
+            <span class="toggle-text">Show Hitboxes</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Sandbox Settings (Shown in Sandbox Mode) -->
+      <div id="sandbox-panel" class="card sandbox-card hidden">
+        <label class="card-title">🛠️ CUSTOM MATCH SETTINGS</label>
+        
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Light Death Note Time</span>
+            <span id="val-dn-time" class="slider-val">15.0s</span>
+          </div>
+          <input type="range" id="param-dn-time" min="3" max="30" step="0.5" value="15">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Sword Length Multiplier</span>
+            <span id="val-sword-len" class="slider-val">1.0x</span>
+          </div>
+          <input type="range" id="param-sword-len" min="0.5" max="2.2" step="0.1" value="1.0">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Sword Spin Speed (RPM)</span>
+            <span id="val-spin-spd" class="slider-val">1.2x</span>
+          </div>
+          <input type="range" id="param-spin-spd" min="0.3" max="3.0" step="0.1" value="1.2">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Guts Movement Speed</span>
+            <span id="val-guts-spd" class="slider-val">1.0x</span>
+          </div>
+          <input type="range" id="param-guts-spd" min="0.4" max="2.5" step="0.1" value="1.0">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Light Evasion Speed</span>
+            <span id="val-light-spd" class="slider-val">1.0x</span>
+          </div>
+          <input type="range" id="param-light-spd" min="0.4" max="2.5" step="0.1" value="1.0">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Light Max HP</span>
+            <span id="val-light-hp" class="slider-val">100</span>
+          </div>
+          <input type="range" id="param-light-hp" min="10" max="300" step="10" value="100">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Guts Max HP</span>
+            <span id="val-guts-hp" class="slider-val">100</span>
+          </div>
+          <input type="range" id="param-guts-hp" min="10" max="300" step="10" value="100">
+        </div>
+      </div>
+
+      <!-- Live Battle Stats -->
+      <div class="card stats-card">
+        <label class="card-title">📊 MATCH STATISTICS</label>
+        <div class="stats-grid">
+          <div class="stat-box light-stat">
+            <span class="stat-num" id="stat-light-wins">0</span>
+            <span class="stat-lbl">Light Wins</span>
+          </div>
+          <div class="stat-box guts-stat">
+            <span class="stat-num" id="stat-guts-wins">0</span>
+            <span class="stat-lbl">Guts Wins</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num" id="stat-total-matches">0</span>
+            <span class="stat-lbl">Total Matches</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num" id="stat-hits-landed">0</span>
+            <span class="stat-lbl">Hits Landed</span>
+          </div>
+        </div>
+        <button id="btn-reset-stats" class="btn btn-outline-sm">Reset Stats</button>
+      </div>
+
+      <!-- Sound Settings -->
+      <div class="card audio-card">
+        <label class="card-title">🔊 AUDIO SETTINGS</label>
+        <div class="audio-controls">
+          <button id="btn-toggle-sound" class="btn-sound-toggle">
+            <span id="sound-icon">🔊</span> <span id="sound-text">Sound Effects: ON</span>
+          </button>
+          <button id="btn-toggle-bgm" class="btn-sound-toggle">
+            <span id="bgm-icon">🎵</span> <span id="bgm-text">Original BGM: OFF</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Game Viewport -->
+    <main class="game-viewport">
+      <!-- Screen Header with Battle Title -->
+      <div class="viewport-header">
+        <div class="mode-badge" id="hud-mode-badge">CINEMATIC RE-ENACTMENT</div>
+        <div class="match-timer" id="hud-timer">00:00.0</div>
+      </div>
+
+      <!-- Canvas Frame (Faithful 9:16 Aspect Ratio) -->
+      <div class="canvas-wrapper" id="canvas-container">
+        <canvas id="arena-canvas" width="576" height="1024"></canvas>
+
+        <!-- Overlay Winner Announcer -->
+        <div id="winner-overlay" class="winner-overlay hidden">
+          <div class="winner-modal">
+            <div class="winner-emblem" id="winner-emblem">💀</div>
+            <h2 class="winner-title" id="winner-title">LIGHT YAGAMI WINS!</h2>
+            <p class="winner-desc" id="winner-desc">Death Note written! Instant 100 damage eliminated Guts.</p>
+            <div class="winner-stats-summary" id="winner-stats-summary">
+              Survival Time: 15.0s | Remaining HP: 10
+            </div>
+            <button id="btn-modal-restart" class="btn btn-primary btn-lg">PLAY AGAIN</button>
+          </div>
+        </div>
+
+        <!-- Controls Guide (When Playing) -->
+        <div id="play-guide" class="play-guide hidden">
+          <div class="guide-badge">🎮 CONTROLS</div>
+          <div class="guide-text" id="guide-text">WASD / Arrow Keys or Mouse / Touch to Move</div>
+        </div>
+
+        <!-- Mobile Touch Joystick (Visible on touch devices) -->
+        <div id="touch-controls" class="touch-controls hidden">
+          <div id="joystick-base" class="joystick-base">
+            <div id="joystick-stick" class="joystick-stick"></div>
+          </div>
+          <button id="touch-action-btn" class="touch-btn">SLASH</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

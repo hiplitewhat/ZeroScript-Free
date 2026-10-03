@@ -1,0 +1,80 @@
+@echo off
+REM SPDX-License-Identifier: GPL-3.0-or-later
+REM Windows_Start.bat
+REM -----------------------------------------------------------------------------
+REM  One-tap Windows launcher (the .bat equivalent of Termux_Start.sh).
+REM  Starts both halves of the Windows path:
+REM
+REM     synapse\relay.py   (HTTP :18081  -  the in-game executor talks to this)
+REM     bridge.py          (WebSocket    -  the browser extension talks to this)
+REM
+REM  First run installs the one Python dependency if it is missing. The bridge
+REM  runs in the foreground (so you can see its status); Ctrl+C stops it AND
+REM  the relay. Run it from anywhere - it cds to its own folder first.
+REM -----------------------------------------------------------------------------
+
+setlocal EnableExtensions EnableDelayedExpansion
+cd /d "%~dp0" || (echo [win-start] could not cd to script folder & exit /b 1)
+
+set "PY=python"
+where %PY% >nul 2>&1
+if errorlevel 1 (
+    echo [win-start] python not found - install Python 3 from https://python.org
+    exit /b 1
+)
+
+%PY% -c "import websockets" >nul 2>&1
+if errorlevel 1 (
+    echo [win-start] installing missing dependency ^(websockets^)...
+    %PY% -m pip install websockets
+    if errorlevel 1 (
+        echo [win-start] pip install failed - run it yourself:  pip install websockets
+        exit /b 1
+    )
+)
+
+if not exist logs mkdir logs
+set "RELAY_PID="
+
+REM Relay on :18081 (skipped if one is already running).
+curl -s -o nul --max-time 2 http://127.0.0.1:18081/health >nul 2>&1
+if not errorlevel 1 (
+    echo [win-start] synapse relay already running on :18081 - leaving it alone
+) else (
+    echo [win-start] starting synapse relay ^(log: logs\relay.log^)
+    start "synapse-relay" /b %PY% synapse\relay.py >"logs\relay.log" 2>&1
+    REM NOTE: 'start /b' does not give us a reliable PID; see cleanup note below.
+    set "RELAY_PID=started"
+)
+
+echo [win-start] starting bridge ^(Ctrl+C stops bridge + relay^)
+echo [win-start] the bridge SKIPS the 'roblox' Studio server on Windows only
+echo [win-start] if Studio is not installed - that yellow line is fine.
+
+REM Sharing the HTTP API (ZS_API_HOST set to a non-loopback address).
+if defined ZS_API_HOST (
+    if /I not "%ZS_API_HOST%"=="127.0.0.1" if /I not "%ZS_API_HOST%"=="localhost" if /I not "%ZS_API_HOST%"=="::1" (
+        for /f "delims=" %%I in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.PrefixOrigin -ne 'WellKnown'} ^| Select-Object -First 1).IPAddress"') do set "IP=%%I"
+        if not defined ZS_API_PORT set "ZS_API_PORT=17614"
+        echo [win-start] HTTP API shared on port !ZS_API_PORT! - people on your network can curl:
+        echo               curl -H "Authorization: Bearer ^<ZS_API_TOKEN^>" http://!IP!:!ZS_API_PORT!/status
+        if not defined ZS_API_TOKEN if not "%ZS_API_OPEN%"=="1" (
+            echo [win-start] ^(no ZS_API_TOKEN set - the bridge will REFUSE the shared bind and stay loopback^)
+        )
+    )
+)
+
+%PY% bridge.py
+set "BRIDGE_RC=%ERRORLEVEL%"
+
+REM Cleanup: bridge has exited, so try to kill the relay we started.
+if defined RELAY_PID (
+    echo [win-start] stopping synapse relay...
+    taskkill /f /im python.exe /fi "WINDOWTITLE eq synapse-relay*" >nul 2>&1
+    REM Fallback: kill any python listening on 18081
+    for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":18081" ^| findstr "LISTENING"') do (
+        taskkill /f /pid %%P >nul 2>&1
+    )
+)
+
+endlocal & exit /b %BRIDGE_RC%

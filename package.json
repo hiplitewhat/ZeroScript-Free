@@ -1,0 +1,20 @@
+{
+  "name": "zeroscript-playwright-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for ZeroScript",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.19.43",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.23.5"
+  },
+  "scripts": {
+    "test": "npx playwright test",
+    "test:chatgpt": "node --test tests/chatgpt-provider.test.cjs",
+    "test:mcp": "node --test tests/mcp-server.test.cjs",
+    "test:mcp:remote": "node --test tests/mcp-remote.test.cjs",
+    "test:login": "npx playwright test e2e/login-setup.spec.js",
+    "test:arena": "npx playwright test e2e/arena-agent.spec.js",
+    "test:headed": "npx playwright test --headed"
+  }
+}

@@ -1,0 +1,330 @@
+From e62f3d1747cf763a0c94772d65f709a373d3398d Mon Sep 17 00:00:00 2001
+From: ZeroScript <hipliteidk@gmail.com>
+Date: Sat, 3 Oct 2026 06:45:19 +0000
+Subject: [PATCH] ZeroScript bridge: run out of the box against the on-device
+ bridge
+
+PrivateAgent speaks the OpenAI protocol, so it can use the ZeroScript bridge
+(the free, keyless Roblox agent whose HTTP API runs on this device) - but three
+things stopped it:
+
+1. Cleartext HTTP. From API 28 on, plain http:// is refused at the socket
+   level, and nothing in the manifest permitted it, so http://127.0.0.1:17614
+   could be blocked outright. Added a network security config that permits
+   cleartext for LOOPBACK ONLY (localhost / 127.0.0.1 / ::1); every other host
+   keeps the platform default, so remote providers must still be HTTPS.
+2. No usable defaults. Base URL and model now default to the bridge
+   (http://127.0.0.1:17614/v1, 'zeroscript'), so a fresh install works as soon
+   as the bridge is running. Existing installs keep their saved settings.
+3. The API key was mandatory. The bridge ignores the Authorization header
+   unless it was started with ZS_API_TOKEN, and there is no key to obtain, so
+   the app refused to start. A loopback base URL now needs no key
+   (isLoopbackBaseUrl); a real provider still requires one. isConfigured and
+   every request guard follow the same rule.
+
+UI: a ZeroScript preset chip in Settings and a ZeroScript provider card in
+onboarding (pre-selected on a fresh install, key field hidden, and onboarding
+may finish while the bridge is still stopped). Two tests cover the new rule.
+Version 1.0.3+2022 so this build is distinguishable from upstream's.
+---
+ android/app/src/main/AndroidManifest.xml      |  3 +-
+ .../main/res/xml/network_security_config.xml  | 16 ++++++
+ lib/screens/onboarding_screen.dart            | 32 +++++++++---
+ lib/screens/settings_screen.dart              | 17 ++++++-
+ lib/services/ai_service.dart                  | 50 ++++++++++++++-----
+ pubspec.yaml                                  |  2 +-
+ test/ai_service_test.dart                     | 19 +++++++
+ 7 files changed, 117 insertions(+), 22 deletions(-)
+ create mode 100644 android/app/src/main/res/xml/network_security_config.xml
+
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 6345bf6..27c093e 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -47,7 +47,8 @@
+     <application
+         android:label="PrivateAgent"
+         android:name="${applicationName}"
+-        android:icon="@mipmap/ic_launcher">
++        android:icon="@mipmap/ic_launcher"
++        android:networkSecurityConfig="@xml/network_security_config">
+ 
+         <activity
+             android:name=".MainActivity"
+diff --git a/android/app/src/main/res/xml/network_security_config.xml b/android/app/src/main/res/xml/network_security_config.xml
+new file mode 100644
+index 0000000..cd51284
+--- /dev/null
++++ b/android/app/src/main/res/xml/network_security_config.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  Cleartext HTTP is refused by default from Android 9 (API 28) on, which is why
++  a plain http:// endpoint fails at the socket level on a release build.
++
++  The ZeroScript bridge runs ON THIS DEVICE (http://127.0.0.1:17614/v1), so
++  loopback has to be allowed. Only loopback is: every other host keeps the
++  platform default, so remote providers must still be HTTPS.
++-->
++<network-security-config>
++    <domain-config cleartextTrafficPermitted="true">
++        <domain includeSubdomains="false">localhost</domain>
++        <domain includeSubdomains="false">127.0.0.1</domain>
++        <domain includeSubdomains="false">::1</domain>
++    </domain-config>
++</network-security-config>
+diff --git a/lib/screens/onboarding_screen.dart b/lib/screens/onboarding_screen.dart
+index 9dece3e..3591fdb 100644
+--- a/lib/screens/onboarding_screen.dart
++++ b/lib/screens/onboarding_screen.dart
+@@ -31,14 +31,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+   bool _isSmsGranted = false;
+   bool _isOverlayGranted = false;
+ 
+-  // AI config states
+-  String _selectedProvider = 'deepseek';
++  // AI config states. Pre-selected on the ZeroScript bridge (this fork's focus):
++  // it runs on this device, needs no API key, and a fresh install is usable as
++  // soon as the bridge is started. Anything else is one tap away.
++  String _selectedProvider = 'zeroscript';
+   final TextEditingController _apiKeyController = TextEditingController();
+   final TextEditingController _baseUrlController = TextEditingController(
+-    text: 'https://api.deepseek.com',
++    text: AiService.zeroscriptBaseUrl,
+   );
+   final TextEditingController _modelController = TextEditingController(
+-    text: 'deepseek-chat',
++    text: AiService.zeroscriptModel,
+   );
+   bool _obscureKey = true;
+   bool _isValidating = false;
+@@ -157,7 +159,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+     setState(() {
+       _selectedProvider = provider;
+       _validationError = null;
+-      if (provider == 'deepseek') {
++      if (provider == 'zeroscript') {
++        _baseUrlController.text = AiService.zeroscriptBaseUrl;
++        _modelController.text = AiService.zeroscriptModel;
++      } else if (provider == 'deepseek') {
+         _baseUrlController.text = 'https://api.deepseek.com';
+         _modelController.text = 'deepseek-chat';
+       } else if (provider == 'groq') {
+@@ -199,6 +204,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+ 
+     if (_selectedProvider != 'ollama' &&
+         _selectedProvider != 'local' &&
++        _selectedProvider != 'zeroscript' &&
+         apiKey.isEmpty) {
+       setState(() {
+         _validationError = 'API Key is required for this provider.';
+@@ -209,9 +215,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+ 
+     try {
+       final models = await _aiService.fetchAvailableModels(baseUrl, apiKey);
++      // ollama/local/zeroscript are allowed to proceed without a live model
++      // list: the bridge may simply not be started yet, and blocking setup on
++      // that would leave the user stuck on the onboarding screen.
+       if (models.isNotEmpty ||
+           _selectedProvider == 'ollama' ||
+-          _selectedProvider == 'local') {
++          _selectedProvider == 'local' ||
++          _selectedProvider == 'zeroscript') {
+         await _aiService.saveSettings(
+           apiKey: apiKey,
+           baseUrl: baseUrl,
+@@ -1114,6 +1124,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+               scrollDirection: Axis.horizontal,
+               physics: const BouncingScrollPhysics(),
+               children: [
++                _buildProviderCard(
++                  'zeroscript',
++                  'ZeroScript',
++                  Icons.smart_toy_rounded,
++                  isDark,
++                ),
++                const SizedBox(width: 10),
+                 _buildProviderCard(
+                   'deepseek',
+                   'DeepSeek',
+@@ -1160,7 +1177,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
+               physics: const BouncingScrollPhysics(),
+               children: [
+                 if (_selectedProvider != 'ollama' &&
+-                    _selectedProvider != 'local') ...[
++                    _selectedProvider != 'local' &&
++                    _selectedProvider != 'zeroscript') ...[
+                   _buildFormTextField(
+                     controller: _apiKeyController,
+                     label: 'API Key',
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 8012088..74286dd 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -171,7 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen>
+     final baseUrl = _baseUrlController.text.trim();
+     final apiKey = _apiKeyController.text.trim();
+ 
+-    if (baseUrl.isEmpty || apiKey.isEmpty) {
++    // A loopback endpoint (the ZeroScript bridge) needs no key, so only require
++    // one for endpoints that actually authenticate.
++    if (baseUrl.isEmpty ||
++        (apiKey.isEmpty && !AiService.isLoopbackBaseUrl(baseUrl))) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(
+           content: Text('Please enter Base URL and API Key first.'),
+@@ -481,6 +484,18 @@ class _SettingsScreenState extends State<SettingsScreen>
+                 spacing: 8,
+                 runSpacing: 4,
+                 children: [
++                  ActionChip(
++                    avatar: const Icon(Icons.smart_toy_rounded, size: 16),
++                    label: const Text(
++                      'ZeroScript',
++                      style: TextStyle(fontSize: 11),
++                    ),
++                    tooltip: 'ZeroScript bridge on this device - no API key needed',
++                    onPressed: () {
++                      _baseUrlController.text = AiService.zeroscriptBaseUrl;
++                      _modelController.text = AiService.zeroscriptModel;
++                    },
++                  ),
+                   ActionChip(
+                     label: const Text(
+                       'Local Server',
+diff --git a/lib/services/ai_service.dart b/lib/services/ai_service.dart
+index 46502a3..c9a7675 100644
+--- a/lib/services/ai_service.dart
++++ b/lib/services/ai_service.dart
+@@ -11,11 +11,30 @@ class AiResponse {
+ }
+ 
+ class AiService {
+-  static const String _defaultBaseUrl = 'https://api.deepseek.com';
+-  static const String _defaultModel = 'deepseek-chat';
++  /// ZeroScript bridge: the free, keyless Roblox AI agent whose HTTP API runs on
++  /// this device (the ZeroScript-Free project). It speaks the OpenAI protocol, so
++  /// the whole app works against it with no API key at all - the signed-in web
++  /// chat does the thinking. These are the defaults, so a fresh install is usable
++  /// the moment the bridge is running.
++  static const String zeroscriptBaseUrl = 'http://127.0.0.1:17614/v1';
++  static const String zeroscriptModel = 'zeroscript';
++  static const String _defaultBaseUrl = zeroscriptBaseUrl;
++  static const String _defaultModel = zeroscriptModel;
+   static const String nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
+   static const String nvidiaDefaultModel = 'z-ai/glm-5.2';
+ 
++  /// True for an endpoint on THIS device. The ZeroScript bridge is loopback-only
++  /// by default and ignores the Authorization header unless it was started with
++  /// ZS_API_TOKEN, so a loopback base URL needs no API key. (If the bridge WAS
++  /// started with a token, put that token in the API Key field.)
++  static bool isLoopbackBaseUrl(String baseUrl) {
++    final host = Uri.tryParse(baseUrl.trim())?.host.toLowerCase();
++    return host == '127.0.0.1' ||
++        host == 'localhost' ||
++        host == '::1' ||
++        host == '[::1]';
++  }
++
+   /// Free, general-purpose chat endpoints verified in NVIDIA's NIM catalog.
+   /// The live /models response is intersected with this list so unavailable or
+   /// non-chat models never appear in PrivateAgent's NVIDIA model picker.
+@@ -173,7 +192,20 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat
+     await prefs.setBool('api_use_system_prompt', useSystemPrompt);
+   }
+ 
+-  bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
++  /// A loopback endpoint (the ZeroScript bridge on this device) is usable with
++  /// no key: the bridge ignores the Authorization header unless it was started
++  /// with ZS_API_TOKEN, and a key is impossible to obtain for it otherwise.
++  bool get isConfigured =>
++      (_apiKey != null && _apiKey!.isNotEmpty) || isLoopbackBaseUrl(_baseUrl);
++
++  /// Throws unless the service can actually make a request.
++  void _requireApiKey() {
++    if (isLoopbackBaseUrl(_baseUrl)) return;
++    if (_apiKey == null || _apiKey!.isEmpty) {
++      throw Exception('API Key is not configured. Please go to Settings.');
++    }
++  }
++
+   String get baseUrl => _baseUrl;
+   String get model => _model;
+   String get apiKey => _apiKey ?? '';
+@@ -209,9 +241,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat
+ 
+   /// Send a message to the AI and get a response.
+   Future<String> sendMessage(String message, {bool isAgentMode = true}) async {
+-    if (_apiKey == null || _apiKey!.isEmpty) {
+-      throw Exception('API Key is not configured. Please go to Settings.');
+-    }
++    _requireApiKey();
+ 
+     // Add ONLY the text to the persistent conversation history to save tokens.
+     _conversationHistory.add({'role': 'user', 'content': message});
+@@ -324,9 +354,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat
+     String message, {
+     bool isAgentMode = true,
+   }) async* {
+-    if (_apiKey == null || _apiKey!.isEmpty) {
+-      throw Exception('API Key is not configured. Please go to Settings.');
+-    }
++    _requireApiKey();
+ 
+     _conversationHistory.add({'role': 'user', 'content': message});
+ 
+@@ -470,9 +498,7 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat
+   /// Send a task execution message — no conversation history, low temperature, limited tokens.
+   /// This is much faster and cheaper than sendMessage.
+   Future<AiResponse> sendTaskMessage(String systemPrompt, String prompt) async {
+-    if (_apiKey == null || _apiKey!.isEmpty) {
+-      throw Exception('API Key is not configured. Please go to Settings.');
+-    }
++    _requireApiKey();
+ 
+     int maxRetries = 4;
+     int currentTry = 0;
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 2520d7a..0e68be9 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: private_agent
+ description: "AI agent for Android"
+ publish_to: "none"
+-version: 1.0.2+2021
++version: 1.0.3+2022
+ 
+ environment:
+   sdk: ^3.10.3
+diff --git a/test/ai_service_test.dart b/test/ai_service_test.dart
+index 26ee701..306c6b1 100644
+--- a/test/ai_service_test.dart
++++ b/test/ai_service_test.dart
+@@ -25,4 +25,23 @@ void main() {
+     expect(AiService.nvidiaDefaultModel, 'z-ai/glm-5.2');
+     expect(AiService.nvidiaFreeChatModels.first, 'z-ai/glm-5.2');
+   });
++
++  test('only a loopback base URL may skip the API key', () {
++    // The ZeroScript bridge runs on this device and takes no key.
++    expect(AiService.isLoopbackBaseUrl('http://127.0.0.1:17614/v1'), isTrue);
++    expect(AiService.isLoopbackBaseUrl('http://localhost:17614/v1'), isTrue);
++    expect(AiService.isLoopbackBaseUrl('http://[::1]:17614/v1'), isTrue);
++    expect(AiService.isLoopbackBaseUrl('  http://127.0.0.1:17614/v1  '), isTrue);
++    // Anything reachable over a network still needs one.
++    expect(AiService.isLoopbackBaseUrl('https://api.deepseek.com'), isFalse);
++    expect(AiService.isLoopbackBaseUrl('http://192.168.1.50:17614/v1'), isFalse);
++    expect(AiService.isLoopbackBaseUrl('http://10.0.2.2:11434/v1'), isFalse);
++    expect(AiService.isLoopbackBaseUrl(''), isFalse);
++    expect(AiService.isLoopbackBaseUrl('not a url'), isFalse);
++  });
++
++  test('the ZeroScript bridge is the default endpoint', () {
++    expect(AiService.zeroscriptBaseUrl, 'http://127.0.0.1:17614/v1');
++    expect(AiService.zeroscriptModel, 'zeroscript');
++  });
+ }
+-- 
+2.39.5
+

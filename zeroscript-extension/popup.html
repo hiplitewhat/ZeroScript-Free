@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 300px; padding: 12px; font-family: system-ui, sans-serif; background: #1e1e2f; color: #e0e0e0; }
+    h2 { margin: 0 0 8px 0; font-size: 16px; color: #a78bfa; }
+    .status { font-size: 13px; margin-bottom: 12px; padding: 8px; background: #2a2a3e; border-radius: 6px; }
+    .status .label { color: #9ca3af; }
+    .status .value { color: #34d399; font-weight: 600; }
+    .status .value.offline { color: #f87171; }
+    select { width: 100%; padding: 6px 8px; background: #2a2a3e; color: #e0e0e0; border: 1px solid #4a4a6a; border-radius: 4px; font-size: 13px; margin-bottom: 10px; }
+    button { width: 100%; padding: 8px; background: #7c3aed; color: white; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    button:hover { background: #6d28d9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .note { font-size: 11px; color: #6b7280; margin-top: 8px; text-align: center; }
+    .provider-info { font-size: 12px; color: #9ca3af; margin-top: 4px; padding: 4px 8px; background: #2a2a3e; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>🧩 ZeroScript Free</h2>
+  <div class="status">
+    <span class="label">Status:</span>
+    <span class="value" id="statusText">● Connected</span>
+  </div>
+  <div class="provider-info" id="providerInfo">Loading providers...</div>
+  <label for="providerSelect" style="font-size:13px;color:#9ca3af;display:block;margin-bottom:4px;">Active Provider:</label>
+  <select id="providerSelect">
+    <option value="auto">Auto-detect</option>
+  </select>
+  <button id="refreshBtn">⟳ Refresh Providers</button>
+  <button id="reloadBtn" style="margin-top:6px;background:#4a4a6a;">↻ Reload Extension</button>
+  <div class="note">v1.5.2 — Select provider or use auto-detect</div>
+  <script src="popup.js"></script>
+</body>
+</html>

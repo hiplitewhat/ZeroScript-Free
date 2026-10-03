@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "roblox": {
+      "command": "launch_studio_mcp.py",
+      "args": []
+    },
+    "synapse": {
+      "command": "synapse/mcp_synapse.py",
+      "args": []
+    },
+    "termux": {
+      "command": "termux/mcp_termux.py",
+      "args": []
+    }
+  },
+  "synapse_auto_added": true,
+  "termux_auto_added": true
+}
